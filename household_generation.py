@@ -2,8 +2,8 @@ import random
 import pymongo
 import time
 import config
+from datetime import datetime, timezone
 from pymongo import MongoClient
-from bson.binary import UuidRepresentation
 from uuid import uuid4
 
 #Global Variable
@@ -17,7 +17,7 @@ def createSensors():
         sensor['sensorId'] = sensor_array[i]
         sensor['sensorType'] = random.choice(sensorType)
         sensor['sensorValue'] = random.randint(0, 100)
-        sensor['timestamp'] = time.time()
+        sensor['timestamp'] = datetime.now(timezone.utc)
         sensor['heartbeat'] = 1
         sensor['message'] = "Initiatize"
         sensors.append(sensor)
@@ -32,10 +32,7 @@ def createHouseholds():
     for i in range(10000):
         household = {}
         household['householdId'] = i
-        household['position'] = {
-            type: "Point", 
-            'coordinates': [random.uniform(latitude_range[0], latitude_range[1]),random.uniform(longitude_range[0], longitude_range[1])]
-            }
+        household['coordinates'] = [random.uniform(latitude_range[0], latitude_range[1]),random.uniform(longitude_range[0], longitude_range[1])],
         household['sensorIds'] = []
         for j in range(5):
             sensorId = str(uuid4())
@@ -49,19 +46,22 @@ def createHouseholds():
 
 #Connect to MongoDB
 client = pymongo.MongoClient(config.CONNECTION_STRING, 27017)
-db = client['test']
+db = client['home-energy-management']
 db.create_collection('sensors', timeseries={ 'timeField': 'timestamp' })
 
 householdsCollection = db['households']
 sensorCollection = db['sensors']
-
-print(sensor_array)
+print('Connected to MongoDB')
 
 #Insert Households into MongoDB
 try: 
     households = createHouseholds()
     householdsCollection.insert_many(households)
+    householdCount = householdsCollection.count_documents({})
+    print('Households inserted. Number of Households: {}'.format(str(householdCount)))
+    time.sleep(2)
 except Exception as e:
+    print('ERROR: Households not inserted')
     print(e)
     time.sleep(5)
 
@@ -69,16 +69,22 @@ except Exception as e:
 try: 
     sensors = createSensors()
     sensorCollection.insert_many(sensors)
+    sensorCount = sensorCollection.count_documents({})
+    print('Sensors inserted. Number of Sensors: {}'.format(str(sensorCount)))
+    time.sleep(2)
 except Exception as e:
+    print('ERROR: Sensors not inserted')
     print(e)
     time.sleep(5)
 
 #Create Indexes in MongoDB 
 try:
     householdsCollection.create_index([('householdId', pymongo.ASCENDING)], unique=True)
-    sensorCollection.create_index([('sensorId', pymongo.ASCENDING)], unique=True)
-    sensorCollection.create_index([('timestamp', pymongo.ASCENDING)])
+    print('Household id index created')
+    sensorCollection.create_index([('sensorId', pymongo.ASCENDING)])
+    print('Sensor id index created')
     sensorCollection.create_index([('message', pymongo.ASCENDING)])
+    print('Sensor message index created')
 except Exception as e:
     print(e)
     time.sleep(5)
