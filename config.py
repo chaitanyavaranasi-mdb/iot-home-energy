@@ -1,1 +1,0 @@
-CONNECTION_STRING = 'mongodb+srv://main_user:mypassword@varanasisandbox.mgslw.mongodb.net/myFirstDatabase?retryWrites=true&w=majority'
