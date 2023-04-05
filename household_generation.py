@@ -1,0 +1,84 @@
+import random
+import pymongo
+import time
+import config
+from pymongo import MongoClient
+from bson.binary import UuidRepresentation
+from uuid import uuid4
+
+#Global Variable
+sensor_array = []
+
+def createSensors():
+    sensors = []
+    sensorType = ["Water Heater", "AC Unit", "Refrigerator", "Television", "Electric Oven", "Lights", "EV Charger", "Washer", "Dryer", "Dishwasher", "Microwave"]
+    for i in range(len(sensor_array)):
+        sensor = {}
+        sensor['sensorId'] = sensor_array[i]
+        sensor['sensorType'] = random.choice(sensorType)
+        sensor['sensorValue'] = random.randint(0, 100)
+        sensor['timestamp'] = time.time()
+        sensor['heartbeat'] = 1
+        sensor['message'] = "Initiatize"
+        sensors.append(sensor)
+    return sensors
+
+def createHouseholds(): 
+    longitude_range = (26.1, 49.0)
+    latitude_range = (-124.6, -69.7)
+
+    households = []
+
+    for i in range(10000):
+        household = {}
+        household['householdId'] = i
+        household['position'] = {
+            type: "Point", 
+            'coordinates': [random.uniform(latitude_range[0], latitude_range[1]),random.uniform(longitude_range[0], longitude_range[1])]
+            }
+        household['sensorIds'] = []
+        for j in range(5):
+            sensorId = str(uuid4())
+            if sensorId not in sensor_array:
+                sensor_array.append(sensorId)
+                household['sensorIds'].append(sensorId)
+            else: 
+                j -= 1
+        households.append(household)
+    return households
+
+#Connect to MongoDB
+client = pymongo.MongoClient(config.CONNECTION_STRING, 27017)
+db = client['test']
+db.create_collection('sensors', timeseries={ 'timeField': 'timestamp' })
+
+householdsCollection = db['households']
+sensorCollection = db['sensors']
+
+print(sensor_array)
+
+#Insert Households into MongoDB
+try: 
+    households = createHouseholds()
+    householdsCollection.insert_many(households)
+except Exception as e:
+    print(e)
+    time.sleep(5)
+
+#Insert Sensors into MongoDB
+try: 
+    sensors = createSensors()
+    sensorCollection.insert_many(sensors)
+except Exception as e:
+    print(e)
+    time.sleep(5)
+
+#Create Indexes in MongoDB 
+try:
+    householdsCollection.create_index([('householdId', pymongo.ASCENDING)], unique=True)
+    sensorCollection.create_index([('sensorId', pymongo.ASCENDING)], unique=True)
+    sensorCollection.create_index([('timestamp', pymongo.ASCENDING)])
+    sensorCollection.create_index([('message', pymongo.ASCENDING)])
+except Exception as e:
+    print(e)
+    time.sleep(5)
