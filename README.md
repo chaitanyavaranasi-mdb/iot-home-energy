@@ -14,4 +14,7 @@ cd data_loader
 pip3 install -r requirements.txt
 python3 household_generation.py
 ~~~
-3. The Sensor generation will utilize locust, a load testing library. You can use MongoDB's managed mLocust or you can spin up an independent locust file. 
+3. The Sensor generation will utilize locust, a load testing library. You can use MongoDB's managed mLocust or you can spin up an independent locust instance. The code example below is for the local locust instance. You can reference the locust configuration options [here](https://docs.locust.io/en/stable/configuration.html). 
+~~~
+locust -f data_loader/measurement_insertion.py --headless -u 1 -r 1 --run-time 1m --host '<CONNECTION_STRING>|home-energy-management|sensors'
+~~~
