@@ -1,81 +1,119 @@
+#!/usr/bin/env python
+# Allows us to make many pymongo requests in parallel to overcome the single threaded problem
+from gevent import monkey
+monkey.patch_all()
+
 import pymongo
 import time
 import random
+from datetime import datetime, timezone
 from bson.json_util import dumps
-from locust import HttpUser, events, task, constant, tag, between, runners
+from locust import User, events, task, constant, tag, between, runners
+from bson import json_util
+from bson.json_util import loads
+from bson import ObjectId
+import logging
 
-class MetricsLocust(HttpUser):
+# Global vars
+# Store the client conn globally so we don't create a conn pool for every user
+# Track the srv globally so we know if we need to reinit the client
+_CLIENT = None
+_SRV = None
 
-    wait_time = between(1,30)
-    client, coll, bulk_size = None, None, None
-    global weights, schema
+class MetricsLocust(User):
+    client, coll = None, None
 
     def __init__(self, parent):
+        global _CLIENT, _SRV
         super().__init__(parent)
         
         try:
-            vars = self.host.split("|")
+            vars = []
+            if self.host is not None: 
+                vars = self.host.split("|")
+            print("Host Param:",self.host)
             srv = vars[0]
-            print("SRV:",srv)
-            self.client = pymongo.MongoClient(srv)
+            if _SRV != srv:
+                self.client = pymongo.MongoClient(srv)
+                _CLIENT = self.client
+                _SRV = srv
+            else:
+                self.client = _CLIENT
 
-            db = self.client[vars[1]]
-            self.sensors = db['sensors']
-
+            if self.client is not None:
+                db = self.client[vars[1]]
+                #self.coll = db[vars[2]]
+                self.coll = db[vars[2]]
         except Exception as e:
             # If an exception is caught, Locust will show a task with the error msg in the UI for ease
-            # events.fire(request_type="Host Init Failure", name=str(e), response_time=0, response_length=0, exception=e)
+            events.request.fire(request_type="Host Init Failure", name=str(e), response_time=0, response_length=0, exception=e)
             print(e)
             raise e
         
-        try: 
-            cursor = self.sensors.aggregate([
-                {
-                    '$match': {
-                        'message': 'Initiatize'
+        try:
+            cursor = None 
+            if self.coll is not None: 
+                cursor = self.coll.aggregate([
+                    {
+                        '$match': {
+                            'message': 'Initiatize'
+                        }
+                    }, {
+                        '$project': {
+                            'sensorId': 1, 
+                            '_id': 0,
+                            'sensorType' : 1
+                        }
                     }
-                }, {
-                    '$project': {
-                        'sensorIds': 1, 
-                        '_id': 0,
-                        'sensorType' : 1
-                    }
-                }
-            ])
+                ])
             self.sensorArray = []
-            for record in cursor:
-                self.sensorArray.append(record)
+            if cursor is not None: 
+                for record in cursor:
+                    self.sensorArray.append(record)
         except: 
-            print("No sensors found")
+            logging.info("No sensors found")
 
-    @task
+    def get_time(self):
+        return time.time()
+
+    @task(100)
     def insertSensorData(self):
+        tic = self.get_time()
         try:
             randomSensor = random.choice(self.sensorArray)
             sensorRecord = {}
-            sensorRecord['sensorId'] = randomSensor['sensorIds']
+            sensorRecord['sensorId'] = randomSensor['sensorId']
             sensorRecord['sensorType'] = randomSensor['sensorType']
             sensorRecord['sensorValue'] = random.randint(0, 100)
-            sensorRecord['timestamp'] = time.time()
+            sensorRecord['timestamp'] = datetime.now(timezone.utc)
             sensorRecord['heartbeat'] = 1
             sensorRecord['message'] = "Nominal Operation"
-            self.sensors.insert_one(sensorRecord)
+            if self.coll is not None: 
+                self.coll.insert_one(sensorRecord)
+
+            events.request.fire(request_type="Sensor Nominal Insert", name="insert_one_nominal", response_time=(self.get_time()-tic)*1000, response_length=0)
         except Exception as e:
-            print(e)
+            events.request.fire(request_type="Sensor Nominal Insert Failure", name=str(e), response_time=0, response_length=0, exception=e)
+            logging.info(e)
             time.sleep(5)
 
-    @task
+    @task(1)
     def insertErrorSensorData(self):
+        tic = self.get_time()
         try:
             randomSensor = random.choice(self.sensorArray)
             sensorRecord = {}
-            sensorRecord['sensorId'] = randomSensor['sensorIds']
+            sensorRecord['sensorId'] = randomSensor['sensorId']
             sensorRecord['sensorType'] = randomSensor['sensorType']
             sensorRecord['sensorValue'] = random.randint(0, 100)
-            sensorRecord['timestamp'] = time.time()
+            sensorRecord['timestamp'] = datetime.now(timezone.utc)
             sensorRecord['heartbeat'] = 1
             sensorRecord['message'] = "Error Operation"
-            self.sensors.insert_one(sensorRecord)
+            if self.coll is not None: 
+                self.coll.insert_one(sensorRecord)
+            
+            events.request.fire(request_type="Sensor Error Insert", name="insert_one_error", response_time=(self.get_time()-tic)*1000, response_length=0)
         except Exception as e:
-            print(e)
+            events.request.fire(request_type="Sensor Error Insert failure", name=str(e), response_time=0, response_length=0, exception=e)
+            logging.info(e)
             time.sleep(5)
