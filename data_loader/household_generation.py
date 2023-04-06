@@ -1,13 +1,15 @@
 import random
 import pymongo
 import time
-import config
+import os
 from datetime import datetime, timezone
 from pymongo import MongoClient
 from uuid import uuid4
+from dotenv import load_dotenv
 
 #Global Variable
 sensor_array = []
+load_dotenv()
 
 def createSensors():
     sensors = []
@@ -45,7 +47,8 @@ def createHouseholds():
     return households
 
 #Connect to MongoDB
-client = pymongo.MongoClient(config.CONNECTION_STRING, 27017)
+mongo_uri=f"{os.environ['CONNECTION_STRING']}"
+client = pymongo.MongoClient(mongo_uri, 27017)
 db = client['home-energy-management']
 db.create_collection('sensors', timeseries={ 'timeField': 'timestamp' })
 

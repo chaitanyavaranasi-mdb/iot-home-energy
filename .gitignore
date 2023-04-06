@@ -5,10 +5,10 @@ __pycache__/
 *.py[cod]
 *$py.class
 .vscode
-
+locustfile.py
 # C extensions
 *.so
-
+.DS_Store
 # Distribution / packaging
 .Python
 build/
