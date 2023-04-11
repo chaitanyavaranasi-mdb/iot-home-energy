@@ -34,6 +34,20 @@ def getLatestValues(sensorId, numofValues):
 def getHouseholds():
     return json.loads(json_util.dumps(householdsCollection.find()))
 
+@app.route('/getIndividualSensor', methods=['GET'])
+def getSensorIndividual(sensorId):
+    return json.loads(json.util.dumps(sensorCollection.findOne({'sensorId': sensorId})))
+
+@app.route('/getSensorPerHousehold', methods=['GET'])
+def getSensorPerHousehold(householdId):
+    return json.loads(json_util.dumps(sensorCollection.find({'householdId': householdId})))
+
+# @app.route('/densifySensorData', methods=['GET'])
+
+# @app.route('/windowSensorData', methods=['GET'])
+
+# @app.route('/modifySensorValue', methods=['POST'])
+
 # @app.route('/getSensorData', methods=['GET'])
 # def getWindowData(sensorId, startTime, endTime):
 #     valueArray = []
