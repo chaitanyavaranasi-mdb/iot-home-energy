@@ -1,18 +1,18 @@
 #!/usr/bin/env python
 # Allows us to make many pymongo requests in parallel to overcome the single threaded problem
-from gevent import monkey
-monkey.patch_all()
-
 import pymongo
 import time
 import random
 from datetime import datetime, timezone
 from bson.json_util import dumps
-from locust import User, events, task, constant, tag, between, runners
+from locust import User, events, task, tag, between
 from bson import json_util
 from bson.json_util import loads
 from bson import ObjectId
 import logging
+
+from gevent import monkey
+monkey.patch_all()
 
 # Global vars
 # Store the client conn globally so we don't create a conn pool for every user
@@ -45,8 +45,8 @@ class MetricsLocust(User):
                 #self.coll = db[vars[2]]
                 self.coll = db[vars[2]]
         except Exception as e:
-            # If an exception is caught, Locust will show a task with the error msg in the UI for ease
-            events.request.fire(request_type="Host Init Failure", name=str(e), response_time=0, response_length=0, exception=e)
+            # If an exception is caught, Locust will show a task with the error msg in the UI for ease  # noqa: E501
+            events.request.fire(request_type="Host Init Failure", name=str(e), response_time=0, response_length=0, exception=e)  # noqa: E501
             print(e)
             raise e
         
@@ -70,7 +70,8 @@ class MetricsLocust(User):
             if cursor is not None: 
                 for record in cursor:
                     self.sensorArray.append(record)
-        except: 
+        except Exception as e: 
+            logging.info(e)
             logging.info("No sensors found")
 
     def get_time(self):
@@ -91,9 +92,9 @@ class MetricsLocust(User):
             if self.coll is not None: 
                 self.coll.insert_one(sensorRecord)
 
-            events.request.fire(request_type="Sensor Nominal Insert", name="insert_one_nominal", response_time=(self.get_time()-tic)*1000, response_length=0)
+            events.request.fire(request_type="Sensor Nominal Insert", name="insert_one_nominal", response_time=(self.get_time()-tic)*1000, response_length=0)  # noqa: E501
         except Exception as e:
-            events.request.fire(request_type="Sensor Nominal Insert Failure", name=str(e), response_time=0, response_length=0, exception=e)
+            events.request.fire(request_type="Sensor Nominal Insert Failure", name=str(e), response_time=0, response_length=0, exception=e)  # noqa: E501
             logging.info(e)
             time.sleep(5)
 
@@ -112,8 +113,8 @@ class MetricsLocust(User):
             if self.coll is not None: 
                 self.coll.insert_one(sensorRecord)
             
-            events.request.fire(request_type="Sensor Error Insert", name="insert_one_error", response_time=(self.get_time()-tic)*1000, response_length=0)
+            events.request.fire(request_type="Sensor Error Insert", name="insert_one_error", response_time=(self.get_time()-tic)*1000, response_length=0)  # noqa: E501
         except Exception as e:
-            events.request.fire(request_type="Sensor Error Insert failure", name=str(e), response_time=0, response_length=0, exception=e)
+            events.request.fire(request_type="Sensor Error Insert failure", name=str(e), response_time=0, response_length=0, exception=e)  # noqa: E501
             logging.info(e)
             time.sleep(5)

@@ -1,6 +1,5 @@
-from flask import Flask, render_template, request, jsonify
+from flask import Flask
 import pymongo
-import ssl
 from bson import json_util
 import json
 import os
@@ -19,6 +18,12 @@ householdsCollection = db['households']
 sensorCollection = db['sensors']
 print('Connected to MongoDB')
 
+@app.route('/healthCheck')
+def printValues():
+    count_sensors = sensorCollection.count_documents({})
+    count_households = householdsCollection.count_documents({})
+    return f'Number of sensors: {count_sensors} and number of households: {count_households}'  # noqa: E501
+
 @app.route('/getLatestValues', methods=['GET'])
 def getLatestValues(sensorId, numofValues):
     valueArray = []
@@ -36,11 +41,11 @@ def getHouseholds():
 
 @app.route('/getIndividualSensor', methods=['GET'])
 def getSensorIndividual(sensorId):
-    return json.loads(json.util.dumps(sensorCollection.findOne({'sensorId': sensorId})))
+    return json.loads(json_util.dumps(sensorCollection.find({'sensorId': sensorId})))
 
 @app.route('/getSensorPerHousehold', methods=['GET'])
 def getSensorPerHousehold(householdId):
-    return json.loads(json_util.dumps(sensorCollection.find({'householdId': householdId})))
+    return json.loads(json_util.dumps(sensorCollection.find({'householdId': householdId})))  # noqa: E501
 
 # @app.route('/densifySensorData', methods=['GET'])
 
