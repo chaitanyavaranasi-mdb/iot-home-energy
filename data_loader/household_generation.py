@@ -34,7 +34,9 @@ def createHouseholds():
     for i in range(10000):
         household = {}
         household['householdId'] = i
-        household['coordinates'] = [random.uniform(latitude_range[0], latitude_range[1]),random.uniform(longitude_range[0], longitude_range[1])],
+        #household['coordinates'] = [random.uniform(latitude_range[0], latitude_range[1]),random.uniform(longitude_range[0], longitude_range[1])],
+        household['coordinates'] = {"type": "Point",
+                                    "coordinates": [random.uniform(latitude_range[0], latitude_range[1]),random.uniform(longitude_range[0], longitude_range[1])]},
         household['sensorIds'] = []
         for j in range(5):
             sensorId = str(uuid4())
