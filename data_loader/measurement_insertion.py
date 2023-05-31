@@ -4,12 +4,10 @@ import pymongo
 import time
 import random
 from datetime import datetime, timezone
-from bson.json_util import dumps
-from locust import User, events, task, tag, between
-from bson import json_util
-from bson.json_util import loads
-from bson import ObjectId
+from locust import User, events, task
 import logging
+from pymongo import MongoClient
+from uuid import uuid4
 
 from gevent import monkey
 monkey.patch_all()
@@ -19,6 +17,7 @@ monkey.patch_all()
 # Track the srv globally so we know if we need to reinit the client
 _CLIENT = None
 _SRV = None
+sensor_array = []
 
 class MetricsLocust(User):
     client, coll = None, None
@@ -27,6 +26,7 @@ class MetricsLocust(User):
         global _CLIENT, _SRV
         super().__init__(parent)
         
+        #Setup MongoDB Connection
         try:
             vars = []
             if self.host is not None: 
@@ -50,6 +50,49 @@ class MetricsLocust(User):
             print(e)
             raise e
         
+        self.client = pymongo.MongoClient(srv, 27017)
+        db = self.client['home-energy-management']
+        db.create_collection('sensors', timeseries={ 'timeField': 'timestamp' })
+
+        householdsCollection = db['households']
+        sensorCollection = db['sensors']
+
+        #Insert Households into MongoDB
+        try: 
+            households = self.createHouseholds()
+            householdsCollection.insert_many(households)
+            householdCount = householdsCollection.count_documents({})
+            print('Households inserted. Number of Households: {}'.format(str(householdCount)))
+            time.sleep(2)
+        except Exception as e:
+            print('ERROR: Households not inserted')
+            print(e)
+            time.sleep(5)
+
+        #Insert Sensors into MongoDB
+        try: 
+            sensors = self.createSensors()
+            sensorCollection.insert_many(sensors)
+            sensorCount = sensorCollection.count_documents({})
+            print('Sensors inserted. Number of Sensors: {}'.format(str(sensorCount)))
+            time.sleep(2)
+        except Exception as e:
+            print('ERROR: Sensors not inserted')
+            print(e)
+            time.sleep(5)
+
+        #Create Indexes in MongoDB 
+        try:
+            householdsCollection.create_index([('householdId', pymongo.ASCENDING)], unique=True)
+            print('Household id index created')
+            sensorCollection.create_index([('sensorId', pymongo.ASCENDING)])
+            print('Sensor id index created')
+            sensorCollection.create_index([('message', pymongo.ASCENDING)])
+            print('Sensor message index created')
+        except Exception as e:
+            print(e)
+            time.sleep(5)
+
         try:
             cursor = None 
             if self.coll is not None: 
@@ -73,9 +116,6 @@ class MetricsLocust(User):
         except Exception as e: 
             logging.info(e)
             logging.info("No sensors found")
-
-    def get_time(self):
-        return time.time()
 
     @task(100)
     def insertSensorData(self):
@@ -118,3 +158,43 @@ class MetricsLocust(User):
             events.request.fire(request_type="Sensor Error Insert failure", name=str(e), response_time=0, response_length=0, exception=e)  # noqa: E501
             logging.info(e)
             time.sleep(5)
+
+    def get_time(self):
+        return time.time()
+
+    def createSensors(self):
+        sensors = []
+        sensorType = ["Water Heater", "AC Unit", "Refrigerator", "Television", "Electric Oven", "Lights", "EV Charger", "Washer", "Dryer", "Dishwasher", "Microwave"]
+        for i in range(len(sensor_array)):
+            sensor = {}
+            sensor['sensorId'] = sensor_array[i]
+            sensor['sensorType'] = random.choice(sensorType)
+            sensor['sensorValue'] = random.randint(0, 100)
+            sensor['timestamp'] = datetime.now(timezone.utc)
+            sensor['heartbeat'] = 1
+            sensor['message'] = "Initiatize"
+            sensors.append(sensor)
+        return sensors
+
+    def createHouseholds(self): 
+        longitude_range = (26.1, 49.0)
+        latitude_range = (-124.6, -69.7)
+
+        households = []
+
+        for i in range(10000):
+            household = {}
+            household['householdId'] = i
+            #household['coordinates'] = [random.uniform(latitude_range[0], latitude_range[1]),random.uniform(longitude_range[0], longitude_range[1])],
+            household['coordinates'] = {"type": "Point",
+                                        "coordinates": [random.uniform(latitude_range[0], latitude_range[1]),random.uniform(longitude_range[0], longitude_range[1])]}  # noqa: E501
+            household['sensorIds'] = []
+            for j in range(5):
+                sensorId = str(uuid4())
+                if sensorId not in sensor_array:
+                    sensor_array.append(sensorId)
+                    household['sensorIds'].append(sensorId)
+                else: 
+                    j -= 1
+            households.append(household)
+        return households
