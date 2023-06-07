@@ -6,7 +6,6 @@ import random
 from datetime import datetime, timezone
 from locust import User, events, task
 import logging
-from pymongo import MongoClient
 from uuid import uuid4
 from faker import Faker
 from geopy.geocoders import Nominatim
