@@ -3,9 +3,8 @@ import pymongo
 from bson import json_util
 import json
 import os
-
-
 from flask_cors import CORS
+
 app = Flask(__name__,             
             static_url_path='', 
             static_folder='templates/static',)
@@ -47,19 +46,23 @@ def getSensorIndividual(sensorId):
 def getSensorPerHousehold(householdId):
     return json.loads(json_util.dumps(sensorCollection.find({'householdId': householdId})))  # noqa: E501
 
-# @app.route('/densifySensorData', methods=['GET'])
+#Densify on a minute interval over a 4 hour period 
+@app.route('/densifySensorData', methods=['GET'])
+def densifySensorData(sensorId, startTime, endTime):
+    valueArray = []
+    agg_pipeline = [{
+        '$densify': { 
+            'field': "timestamp",
+            range: {
+                'step': 1,
+                'unit': "minute",
+                'bounds':[ startTime, endTime ]
+            }
+        },
+    }]
+    valueArray = list(sensorCollection.aggregate(agg_pipeline))
+    return valueArray
 
 # @app.route('/windowSensorData', methods=['GET'])
 
 # @app.route('/modifySensorValue', methods=['POST'])
-
-# @app.route('/getSensorData', methods=['GET'])
-# def getWindowData(sensorId, startTime, endTime):
-#     valueArray = []
-#     agg_pipeline = [{
-#         '$match': {'sensorId': sensorId},
-#         '$sort': {'timestamp': -1},
-#         '$limit': numofValues
-#     }]
-#     valueArray = list(sensorCollection.aggregate(agg_pipeline))
-#     return valueArray
