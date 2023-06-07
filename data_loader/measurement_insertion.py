@@ -1,15 +1,15 @@
 #!/usr/bin/env python
-# Allows us to make many pymongo requests in parallel to overcome the single threaded problem
+# Allows us to make pymongo requests in parallel to overcome the single threaded problem
 import pymongo
 import time
 import random
 from datetime import datetime, timezone
-from bson.json_util import dumps
-from locust import User, events, task, tag, between
-from bson import json_util
-from bson.json_util import loads
-from bson import ObjectId
+from locust import User, events, task
 import logging
+from pymongo import MongoClient
+from uuid import uuid4
+from faker import Faker
+from geopy.geocoders import Nominatim
 
 from gevent import monkey
 monkey.patch_all()
@@ -19,6 +19,11 @@ monkey.patch_all()
 # Track the srv globally so we know if we need to reinit the client
 _CLIENT = None
 _SRV = None
+sensor_array = []
+fake = Faker()
+geolocator = Nominatim(user_agent="iot_geoapi")
+numHouseholds = 10000
+numSensorsPerHousehold = 5
 
 class MetricsLocust(User):
     client, coll = None, None
@@ -27,6 +32,7 @@ class MetricsLocust(User):
         global _CLIENT, _SRV
         super().__init__(parent)
         
+        #Setup MongoDB Connection
         try:
             vars = []
             if self.host is not None: 
@@ -47,9 +53,60 @@ class MetricsLocust(User):
         except Exception as e:
             # If an exception is caught, Locust will show a task with the error msg in the UI for ease  # noqa: E501
             events.request.fire(request_type="Host Init Failure", name=str(e), response_time=0, response_length=0, exception=e)  # noqa: E501
-            print(e)
             raise e
         
+        self.client = pymongo.MongoClient(srv, 27017)
+        db = self.client['home-energy-management']
+        list_of_collections = db.list_collection_names()
+        
+        try: 
+            if 'sensors' not in list_of_collections:
+                db.create_collection('sensors', timeseries={ 'timeField': 'timestamp' })
+                sensorCollection = db['sensors']
+                householdsCollection = db['households']
+            else: 
+                sensorCollection = db['sensors']
+                householdsCollection = db['households']
+        except Exception as e: 
+            events.request.fire(request_type="Sensors collection creation error", name=str(e), response_time=0, response_length=0, exception=e)  # noqa: E501
+            raise e
+
+        #Insert Households into MongoDB if collection if empty
+        try: 
+            households = self.createHouseholds()
+            householdsCollection.insert_many(households)
+            householdCount = householdsCollection.count_documents({})
+            print('Households inserted. Number of Households: {}'.format(str(householdCount)))  # noqa: E501
+            time.sleep(2)
+        except Exception as e:
+            print('ERROR: Households not inserted')
+            print(e)
+            time.sleep(5)
+
+        #Insert Sensors into MongoDB if collection if empty
+        try: 
+            sensors = self.createSensors()
+            sensorCollection.insert_many(sensors)
+            sensorCount = sensorCollection.count_documents({})
+            print('Sensors inserted. Number of Sensors: {}'.format(str(sensorCount)))
+            time.sleep(2)
+        except Exception as e:
+            print('ERROR: Sensors not inserted')
+            print(e)
+            time.sleep(5)
+
+         #Create Indexes in MongoDB 
+        try:
+            householdsCollection.create_index([('householdId', pymongo.ASCENDING)], unique=True)  # noqa: E501
+            print('Household id index created')
+            sensorCollection.create_index([('sensorId', pymongo.ASCENDING)])
+            print('Sensor id index created')
+            sensorCollection.create_index([('message', pymongo.ASCENDING)])
+            print('Sensor message index created')
+        except Exception as e:
+            print(e)
+            time.sleep(5)
+
         try:
             cursor = None 
             if self.coll is not None: 
@@ -73,9 +130,6 @@ class MetricsLocust(User):
         except Exception as e: 
             logging.info(e)
             logging.info("No sensors found")
-
-    def get_time(self):
-        return time.time()
 
     @task(100)
     def insertSensorData(self):
@@ -118,3 +172,47 @@ class MetricsLocust(User):
             events.request.fire(request_type="Sensor Error Insert failure", name=str(e), response_time=0, response_length=0, exception=e)  # noqa: E501
             logging.info(e)
             time.sleep(5)
+
+    def get_time(self):
+        return time.time()
+
+    def createSensors(self):
+        sensors = []
+        sensorType = ["Water Heater", "AC Unit", "Refrigerator", "Television", "Electric Oven", "Lights", "EV Charger", "Washer", "Dryer", "Dishwasher", "Microwave"]  # noqa: E501
+        for i in range(len(sensor_array)):
+            sensor = {}
+            sensor['sensorId'] = sensor_array[i]
+            sensor['sensorType'] = random.choice(sensorType)
+            sensor['sensorValue'] = random.randint(0, 100)
+            sensor['timestamp'] = datetime.now(timezone.utc)
+            sensor['heartbeat'] = 1
+            sensor['message'] = "Initiatize"
+            sensors.append(sensor)
+        return sensors
+
+    def createHouseholds(self): 
+        households = []
+
+        for i in range(numHouseholds):
+            householdCoordinates = fake.local_latlng(country_code="US")
+            
+            household = {}
+            household['householdId'] = i
+            household['region'] = householdCoordinates[3]
+            household['city'] = householdCoordinates[2]
+            household['coordinates'] = {"type": "Point",
+                                        "coordinates": [householdCoordinates[0],householdCoordinates[1]]}  # noqa: E501
+            household['sensorIds'] = []
+
+            for j in range(numSensorsPerHousehold):
+                sensorId = str(uuid4())
+                if sensorId not in sensor_array:
+                    sensor_array.append(sensorId)
+                    household['sensorIds'].append(sensorId)
+                else: 
+                    j -= 1
+            households.append(household)
+        return households
+    
+    def generateKwhValue(self): 
+        return True
